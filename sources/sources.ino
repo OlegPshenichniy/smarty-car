@@ -1,3 +1,6 @@
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+
 // Define constants
 
 // engine
@@ -15,6 +18,14 @@ boolean run;
 #define ledPin 13
 boolean led_on;
 
+// led rgb
+int redpin = 11; 
+int bluepin = 10;
+int greenpin = 9;
+int rgbpowerpin = 8;
+int rgb_val;
+boolean rgb_on;
+
 // bluetooth
 #define forwardByte 70
 #define backwardByte 66
@@ -22,8 +33,19 @@ boolean led_on;
 #define turnLeftByte 76
 #define turnRightByte 82
 #define ledLightByte 68
-
+#define rgbLightByte 79
 int incomingByte = 0;
+
+// LCD
+// Set the LCD address to 0x27 for a 16 chars and 2 line display
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// ultrasonic
+#define echoPin 12 // Echo Pin
+#define trigPin 11 // Trigger Pin
+int maximumRange = 200; // Maximum range needed
+int minimumRange = 0; // Minimum range needed
+long duration, distance; // Duration used to calculate distance
 
  
 void setup() {  
@@ -41,9 +63,26 @@ void setup() {
   
   // light
   pinMode(ledPin, OUTPUT);
+  
+  // led rgb
+  pinMode(redpin, OUTPUT);
+  pinMode(bluepin, OUTPUT);
+  pinMode(greenpin, OUTPUT);
+  pinMode(rgbpowerpin, OUTPUT);
+  
+  // ultrasonic
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  
+  // LCD
+  lcd.begin();
+  lcd.backlight(); 
+  lcd.print("Distance sm: ");
+  lcd.setCursor(6, 1);
 
   // initialize variables
-  led_on = false;   
+  led_on = false;
+  rgb_on = false;  
 }
  
 
@@ -54,6 +93,18 @@ void loop() {
   // #motorBOn();
   enableMotors();
   
+  // ultrasonic get distance
+  distance = getDistance();
+  // display on lcd
+  lcd.print(distance);
+  lcd.print("      ");
+  
+  // check safe distance
+  if (distance < 20) {
+    coast(100);
+    brake(100);
+  } 
+
   if (Serial.available() > 0) {
     
     // get bluetooth incoming bytes. Works like yield in python =)
@@ -62,7 +113,7 @@ void loop() {
     // debug
     Serial.print("Received: ");
     Serial.println(incomingByte);
-    
+        
     // engine control
     if (incomingByte == forwardByte) {
       coast(100);
@@ -92,10 +143,29 @@ void loop() {
       }
     }
     
+    // rgb light control
+    if (incomingByte == rgbLightByte) {
+      if (rgb_on) {
+        digitalWrite(rgbpowerpin, LOW);
+        rgb_on = false;
+      } else {
+        digitalWrite(rgbpowerpin, HIGH);
+        rgb_on = true;
+      }
+    }
+    
  }
+ 
+ // chage rgb color
+ if (rgb_on) {
+    ledRgbOn();
+ } 
  
  // main robobrain tact
  delay(200);
+ 
+ // move lcd cursor
+ lcd.setCursor(6, 1);
 }
 
 //////////////////////
@@ -231,4 +301,31 @@ void brake(int time)
   motorABrake();
   motorBBrake();
   delay(time);
+}
+
+// led rgb function
+void ledRgbOn() 
+{
+    analogWrite (11, random(0, 255));
+    analogWrite (10, random(0, 255));
+    analogWrite (9, random(0, 255));
+}
+
+// ultrasonic
+int getDistance() {
+  /* The following trigPin/echoPin cycle is used to determine the
+  distance of the nearest object by bouncing soundwaves off of it. */ 
+  digitalWrite(trigPin, LOW); 
+  delayMicroseconds(2); 
+
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10); 
+ 
+  digitalWrite(trigPin, LOW);
+  duration = pulseIn(echoPin, HIGH);
+ 
+  //Calculate the distance (in cm) based on the speed of sound.
+  distance = duration/58.2;
+  
+  return distance;
 }
